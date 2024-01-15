@@ -80,41 +80,46 @@ class MMOE(nn.Module):
 
 
 def test(loader):
-    t1_pred, t2_pred, t1_target, t2_target = [], [], [], []
+    t1_pred, t2_pred, t3_pred, t1_target, t2_target, t3_target = [], [], [], [], [], []
     model.eval()
     with torch.no_grad():
         epoch_loss = []
         for x, y in loader:
             x, y = x.to(device), y.to(device)
             yhat = model(x)
-            y1, y2 = y[:, 0],y[:, 1]
-            yhat_1, yhat_2 = yhat[0], yhat[1]
+            y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
+            yhat_1, yhat_2, yhat_3 = yhat[0], yhat[1], yhat[2]
 
-            loss1, loss2 = loss_fn(yhat_1, y1.view(-1, 1)), loss_fn(yhat_2, y2.view(-1, 1))
-            loss = loss1 + loss2
+            loss1 = bce_loss_fn(yhat_1, y1.view(-1, 1))
+            loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1))
+            loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1))
+            loss = loss1 + loss2 + loss3
 
-            # t1_hat = yhat_1.view(-1) > 0.7
-            # t2_hat = yhat_2.view(-1) > 0.5
-            t1_hat, t2_hat = list(yhat_1.cpu()), list(yhat_2.cpu())
+            t1_hat, t2_hat, t3_hat = list(yhat_1.cpu()), list(yhat_2.cpu()), list(yhat_3.cpu())
 
             t1_pred += t1_hat
             t2_pred += t2_hat
+            t3_pred += t3_hat
             t1_target += list(y1.cpu())
             t2_target += list(y2.cpu())
+            t3_target += list(y3.cpu())
 
     # t1_pred = [1 if x else 0 for x in list(t1_pred)]
     # t2_pred = [1 if x else 0 for x in list(t2_pred)]
 
     auc_1 = roc_auc_score(t1_target, t1_pred)
     auc_2 = roc_auc_score(t2_target, t2_pred)
-    return auc_1, auc_2
+    auc_3 = roc_auc_score(t3_target, t3_pred)
+    return auc_1, auc_2, auc_3 
 
 
 model = MMOE(input_size=320, num_experts=6, experts_out=16, experts_hidden=32, towers_hidden=8, tasks=3)
 model = model.to(device)
 lr = 1e-4
 n_epochs = 10
-loss_fn = nn.BCELoss(reduction='mean')
+bce_loss_fn = nn.BCELoss(reduction='mean')
+mse_loss_fn = nn.MSELoss()
+
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 losses = []
 val_loss = []
@@ -128,20 +133,23 @@ for epoch in range(n_epochs):
         x, y = x.to(device), y.to(device)
         y_hat = model(x)
 
-        y1, y2 = y[:, 0], y[:, 1]
-        y_1, y_2 = y_hat[0], y_hat[1]
+        y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
+        y_1, y_2, y_3 = y_hat[0], y_hat[1], y_hat[2]
 
-        loss1 = loss_fn(y_1, y1.view(-1, 1))
-        loss2 = loss_fn(y_2, y2.view(-1, 1))
-        loss = loss1 + loss2
+        loss1 = bce_loss_fn(y_1, y1.view(-1, 1))
+        loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1))
+        loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1))
+
+        
+        loss = loss1 + loss2 + loss3
         loss.backward()
         optimizer.step()
         optimizer.zero_grad()
         epoch_loss.append(loss.item())
     losses.append(np.mean(epoch_loss))
 
-    auc1, auc2 = test(val_loader)
-    print('train loss: {:.5f}, val task1 auc: {:.5f}, val task2 auc: {:.3f}'.format(np.mean(epoch_loss), auc1, auc2))
+    auc1, auc2, auc3 = test(val_loader)
+    print('train loss: {:.5f}, val task1 auc: {:.5f}, val task2 auc: {:.3f}, val task3 auc: {:.3f}'.format(np.mean(epoch_loss), auc1, auc2, auc3))
 
-auc1, auc2 = test(test_loader)
-print('test task1 auc: {:.3f}, test task2 auc: {:.3f}'.format(auc1, auc2))
+auc1, auc2, auc3 = test(test_loader)
+print('test task1 auc: {:.3f}, test task2 auc: {:.3f}, test task3 auc: {:.3f}'.format(auc1, auc2, auc3))

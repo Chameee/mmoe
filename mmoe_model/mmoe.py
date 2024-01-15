@@ -174,12 +174,12 @@ def test(loader):
 
             # t1_hat = yhat_1.view(-1) > 0.7
             # t2_hat = yhat_2.view(-1) > 0.5
-            t1_hat, t2_hat = list(yhat_1), list(yhat_2)
+            t1_hat, t2_hat = list(yhat_1.cpu()), list(yhat_2.cpu())
 
             t1_pred += t1_hat
             t2_pred += t2_hat
-            t1_target += list(y1)
-            t2_target += list(y2)
+            t1_target += list(y1.cpu())
+            t2_target += list(y2.cpu())
 
     # t1_pred = [1 if x else 0 for x in list(t1_pred)]
     # t2_pred = [1 if x else 0 for x in list(t2_pred)]
@@ -205,7 +205,7 @@ test_loader = DataLoader(dataset=getTensorDataset(test_data.to_numpy(), test_lab
 model = MMOE(input_size=499, num_experts=6, experts_out=16, experts_hidden=32, towers_hidden=8, tasks=2)
 model = model.to(device)
 lr = 1e-4
-n_epochs = 80
+n_epochs = 10
 loss_fn = nn.BCELoss(reduction='mean')
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 losses = []
