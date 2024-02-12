@@ -1,0 +1,1 @@
+python3 model.py --epochs 10 --use_y1 --use_y3

@@ -6,7 +6,10 @@ import torch.optim as optim
 import random
 import pandas as pd
 from sklearn.metrics import roc_auc_score
-
+from data_process import train_loader, test_loader
+import argparse
+from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
+from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -91,8 +94,8 @@ def test(loader):
             yhat_1, yhat_2, yhat_3 = yhat[0], yhat[1], yhat[2]
 
             loss1 = bce_loss_fn(yhat_1, y1.view(-1, 1))
-            loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1))
-            loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1))
+            loss2 = 0.000001 * mse_loss_fn(yhat_2, y2.view(-1, 1))
+            loss3 = 0.00001 * mse_loss_fn(yhat_3, y3.view(-1, 1))
             loss = loss1 + loss2 + loss3
 
             t1_hat, t2_hat, t3_hat = list(yhat_1.cpu()), list(yhat_2.cpu()), list(yhat_3.cpu())
@@ -108,48 +111,70 @@ def test(loader):
     # t2_pred = [1 if x else 0 for x in list(t2_pred)]
 
     auc_1 = roc_auc_score(t1_target, t1_pred)
-    auc_2 = roc_auc_score(t2_target, t2_pred)
-    auc_3 = roc_auc_score(t3_target, t3_pred)
-    return auc_1, auc_2, auc_3 
+    # auc_2 = roc_auc_score(t2_target, t2_pred)
+    # auc_3 = roc_auc_score(t3_target, t3_pred)
+    # return auc_1, auc_2, auc_3
+    
+
+    mse_revenue = mean_squared_error(y_true=t2_target, y_pred=t2_pred)
+    r2_revenue = r2_score(y_true=t2_target, y_pred=t2_pred)
+
+    mse_reputation = mean_squared_error(y_true=t3_target, y_pred=t3_pred)
+    r2_reputation = r2_score(y_true=t3_target, y_pred=t3_pred)
+    
+    return auc_1, mse_revenue, r2_revenue, mse_reputation, r2_reputation
 
 
 model = MMOE(input_size=320, num_experts=6, experts_out=16, experts_hidden=32, towers_hidden=8, tasks=3)
 model = model.to(device)
 lr = 1e-4
-n_epochs = 10
 bce_loss_fn = nn.BCELoss(reduction='mean')
 mse_loss_fn = nn.MSELoss()
 
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
-losses = []
 val_loss = []
 
-for epoch in range(n_epochs):
-    model.train()
-    epoch_loss = []
-    c = 0
-    print("Epoch: {}/{}".format(epoch, n_epochs))
-    for x, y in train_loader:
-        x, y = x.to(device), y.to(device)
-        y_hat = model(x)
+def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3):
+    losses = []
+    for epoch in range(n_epochs):
+        model.train()
+        epoch_loss = []
+        print("Epoch: {}/{}".format(epoch, n_epochs))
+        for x, y in train_loader:
+            x, y = x.to(device), y.to(device)
+            y_hat = model(x)
 
-        y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
-        y_1, y_2, y_3 = y_hat[0], y_hat[1], y_hat[2]
+            y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
+            y_1, y_2, y_3 = y_hat[0], y_hat[1], y_hat[2]
 
-        loss1 = bce_loss_fn(y_1, y1.view(-1, 1))
-        loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1))
-        loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1))
+            loss1 = bce_loss_fn(y_1, y1.view(-1, 1)) if use_y1 else 0
+            loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1)) if use_y2 else 0
+            loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1)) if use_y3 else 0
+            loss = loss1 + loss2 + loss3
 
-        
-        loss = loss1 + loss2 + loss3
-        loss.backward()
-        optimizer.step()
-        optimizer.zero_grad()
-        epoch_loss.append(loss.item())
-    losses.append(np.mean(epoch_loss))
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
 
-    auc1, auc2, auc3 = test(val_loader)
-    print('train loss: {:.5f}, val task1 auc: {:.5f}, val task2 auc: {:.3f}, val task3 auc: {:.3f}'.format(np.mean(epoch_loss), auc1, auc2, auc3))
+            epoch_loss.append(loss.item())
 
-auc1, auc2, auc3 = test(test_loader)
-print('test task1 auc: {:.3f}, test task2 auc: {:.3f}, test task3 auc: {:.3f}'.format(auc1, auc2, auc3))
+        losses.append(np.mean(epoch_loss))
+        auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation = test(train_loader)
+        print('train loss: {:.5f}, val task1 auc: {:.5f}, mse_revenue: {:.5f}, r2_revenue: {:.5f}, mse_reputation: {:.5f}, r2_reputation: {:.5f}'.format(np.mean(epoch_loss), auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation))
+
+def main():
+    parser = argparse.ArgumentParser(description='Train the model')
+    parser.add_argument('--epochs', required=True, type=int, help='Number of epochs')
+    parser.add_argument('--use_y1', action='store_true', help='Use y1 in loss calculation')
+    parser.add_argument('--use_y2', action='store_true', help='Use y2 in loss calculation')
+    parser.add_argument('--use_y3', action='store_true', help='Use y3 in loss calculation')
+
+    args = parser.parse_args()
+
+    # Assume train_loader is predefined or loaded elsewhere
+    train_model(args.epochs, train_loader, args.use_y1, args.use_y2, args.use_y3)
+
+if __name__ == '__main__':
+    main()
+# auc1, auc2, auc3 = test(test_loader)
+# print('test task1 auc: {:.3f}, test task2 auc: {:.3f}, test task3 auc: {:.3f}'.format(auc1, auc2, auc3))
