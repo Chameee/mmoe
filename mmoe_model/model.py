@@ -134,7 +134,7 @@ mse_loss_fn = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 val_loss = []
 
-def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3):
+def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
     losses = []
     for epoch in range(n_epochs):
         model.train()
@@ -159,7 +159,11 @@ def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3):
             epoch_loss.append(loss.item())
 
         losses.append(np.mean(epoch_loss))
-        auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation = test(train_loader)
+        if report_train:
+            auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation = test(train_loader)
+        else:
+            auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation = test(test_loader)
+        
         print('train loss: {:.5f}, val task1 auc: {:.5f}, mse_revenue: {:.5f}, r2_revenue: {:.5f}, mse_reputation: {:.5f}, r2_reputation: {:.5f}'.format(np.mean(epoch_loss), auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation))
 
 def main():
@@ -168,11 +172,13 @@ def main():
     parser.add_argument('--use_y1', action='store_true', help='Use y1 in loss calculation')
     parser.add_argument('--use_y2', action='store_true', help='Use y2 in loss calculation')
     parser.add_argument('--use_y3', action='store_true', help='Use y3 in loss calculation')
+    parser.add_argument('--report_train', action='store_true', help='Report metric in train dataset')
+
 
     args = parser.parse_args()
 
     # Assume train_loader is predefined or loaded elsewhere
-    train_model(args.epochs, train_loader, args.use_y1, args.use_y2, args.use_y3)
+    train_model(args.epochs, train_loader, args.use_y1, args.use_y2, args.use_y3, args.report_train)
 
 if __name__ == '__main__':
     main()
