@@ -39,11 +39,11 @@ with torch.no_grad():
         y1_predict_array.extend(accept_output_cut)
         y1_label_array.extend(y1_batch.reshape(1,-1).tolist()[0])
 
-#             y2_predict_array.extend(revenue_output)
-#             y2_label_array.extend(y2_batch.reshape(1,-1).tolist()[0])
+        y2_predict_array.extend(revenue_output)
+        y2_label_array.extend(y2_batch.reshape(1,-1).tolist()[0])
 
-#             y3_predict_array.extend(reputation_output)
-#             y3_label_array.extend(y3_batch.reshape(1,-1).tolist()[0])
+        y3_predict_array.extend(reputation_output)
+        y3_label_array.extend(y3_batch.reshape(1,-1).tolist()[0])
 
 #         mse_revenue = mean_squared_error(y_true=y2_label_array, y_pred=y2_predict_array)
 

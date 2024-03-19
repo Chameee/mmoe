@@ -10,6 +10,8 @@ from data_process import train_loader, test_loader
 import argparse
 from sklearn.metrics import accuracy_score, mean_squared_error, r2_score
 from sklearn.metrics import precision_score, recall_score, f1_score, accuracy_score
+from torch.autograd import Variable
+
 import warnings
 warnings.filterwarnings("ignore")
 
@@ -134,8 +136,22 @@ mse_loss_fn = nn.MSELoss()
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 val_loss = []
 
+
+def compute_grad_norm(model):
+    total_norm = 0
+    for p in model.parameters():
+        param_grad = p.grad
+        if param_grad is not None:
+            param_norm = param_grad.data.norm(2)
+            total_norm += param_norm.item() ** 2
+    total_norm = total_norm ** (1. / 2)
+    return total_norm
+
 def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
     losses = []
+    initial_losses = [0,0,0] # Initial losses for y1, y2, y3
+    alpha = 0.16 # GradNorm hyper-parameter
+
     for epoch in range(n_epochs):
         model.train()
         epoch_loss = []
@@ -147,12 +163,26 @@ def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
             y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
             y_1, y_2, y_3 = y_hat[0], y_hat[1], y_hat[2]
 
-            loss1 = bce_loss_fn(y_1, y1.view(-1, 1)) if use_y1 else 0
-            loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1)) if use_y2 else 0
-            loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1)) if use_y3 else 0
-            loss = loss1 + loss2 + loss3
+            prev_loss1 = bce_loss_fn(y_1, y1.view(-1, 1)) if use_y1 else 0
+            prev_loss2 = mse_loss_fn(y_2, y2.view(-1, 1)) if use_y2 else 0
+            prev_loss3 = mse_loss_fn(y_3, y3.view(-1, 1)) if use_y3 else 0
+            losses = [prev_loss1, prev_loss2, prev_loss3]
+            weights = [loss / initial_loss if initial_loss != 0 else 1 for loss, initial_loss in zip(losses, initial_losses)]
+            grad_norms = [compute_grad_norm(loss) for loss in losses]
+            avg_grad_norm = sum(grad_norms) / len(grad_norms)
 
-            loss.backward()
+            weight_loss = [weights[i]*losses[i] for i in range(len(weights))]
+
+            loss = sum(weight_loss)
+
+            weight_loss[0].backward(retain_graph=True)
+            weight_loss[1].backward(retain_graph=True)
+            weight_loss[2].backward()
+
+            # GradNorm weight adjustment and normalization
+            for i in range(len(weights)):
+                weights[i] = weights[i] * (1 + alpha * (grad_norms[i] / avg_grad_norm - 1))
+
             optimizer.step()
             optimizer.zero_grad()
 
