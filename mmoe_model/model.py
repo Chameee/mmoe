@@ -169,6 +169,8 @@ def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
             preds_list.append(y_hat.detach().cpu().numpy())
 
             y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
+            mask = y1 > 0
+            y2 = y2 * mask
             y_1, y_2, y_3 = y_hat[0], y_hat[1], y_hat[2]
 
             prev_loss1 = bce_loss_fn(y_1, y1.view(-1, 1)) if use_y1 else 0
