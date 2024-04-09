@@ -213,7 +213,7 @@ def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
 
     # 创建 DataFrame
     df = pd.DataFrame(np.hstack([inputs_arr, preds_arr]))
-    df.columns = ["x1", "x2", ..., "y_predicted1", "y_predicted2", ...] # 请替换 "x1", "x2"... 为实际的列名
+    df.columns = ["x1", "x2", ..., "y_predicted1", "y_predicted2", ...] 
 
     # 保存为 csv 文件
     df.to_csv("result.csv", index=False)
