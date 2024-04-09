@@ -135,8 +135,11 @@ mse_loss_fn = nn.MSELoss()
 
 optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=1e-5)
 val_loss = []
+# 添加输入和预测记录的 list
+inputs_list = []
+preds_list = []
 
-
+from torch.autograd import Variable
 def compute_grad_norm(model):
     total_norm = 0
     for p in model.parameters():
@@ -159,34 +162,41 @@ def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
         for x, y in train_loader:
             x, y = x.to(device), y.to(device)
             y_hat = model(x)
+            # 将输入信息记录下来
+            inputs_list.append(x.cpu().numpy())
+
+            # 将预测信息记录下来
+            preds_list.append(y_hat.detach().cpu().numpy())
 
             y1, y2, y3 = y[:, 0], y[:, 1], y[:, 2]
             y_1, y_2, y_3 = y_hat[0], y_hat[1], y_hat[2]
 
             prev_loss1 = bce_loss_fn(y_1, y1.view(-1, 1)) if use_y1 else 0
-            prev_loss2 = mse_loss_fn(y_2, y2.view(-1, 1)) if use_y2 else 0
-            prev_loss3 = mse_loss_fn(y_3, y3.view(-1, 1)) if use_y3 else 0
+            prev_loss2 = 0.000001 * mse_loss_fn(y_2, y2.view(-1, 1)) if use_y2 else 0
+            prev_loss3 = 0.00001 * mse_loss_fn(y_3, y3.view(-1, 1)) if use_y3 else 0
             losses = [prev_loss1, prev_loss2, prev_loss3]
-            weights = [loss / initial_loss if initial_loss != 0 else 1 for loss, initial_loss in zip(losses, initial_losses)]
-            grad_norms = [compute_grad_norm(loss) for loss in losses]
+            weights = [Variable(loss / initial_loss if initial_loss != 0 else loss, requires_grad=True) for loss, initial_loss in zip(losses, initial_losses)]
+            grad_norms = []
+            for ind, task_loss in enumerate(weights):
+                task_loss.backward(retain_graph=True)
+                grad_norms.append(compute_grad_norm(model))
+                model.zero_grad()
+
             avg_grad_norm = sum(grad_norms) / len(grad_norms)
 
             weight_loss = [weights[i]*losses[i] for i in range(len(weights))]
 
             loss = sum(weight_loss)
 
-            weight_loss[0].backward(retain_graph=True)
-            weight_loss[1].backward(retain_graph=True)
-            weight_loss[2].backward()
+            loss.backward()
+            optimizer.step()
+            optimizer.zero_grad()
 
             # GradNorm weight adjustment and normalization
             for i in range(len(weights)):
                 weights[i] = weights[i] * (1 + alpha * (grad_norms[i] / avg_grad_norm - 1))
 
-            optimizer.step()
-            optimizer.zero_grad()
-
-            epoch_loss.append(loss.item())
+        epoch_loss.append(loss.item())
 
         losses.append(np.mean(epoch_loss))
         if report_train:
@@ -196,6 +206,17 @@ def train_model(n_epochs, train_loader, use_y1, use_y2, use_y3, report_train):
         
         print('train loss: {:.5f}, val task1 auc: {:.5f}, mse_revenue: {:.5f}, r2_revenue: {:.5f}, mse_reputation: {:.5f}, r2_reputation: {:.5f}'.format(np.mean(epoch_loss), auc1, mse_revenue, r2_revenue, mse_reputation, r2_reputation))
 
+
+    # 训练模型结束后，将记录的输入和预测输出拼接起来
+    inputs_arr = np.concatenate(inputs_list, axis=0)
+    preds_arr = np.concatenate(preds_list, axis=0)
+
+    # 创建 DataFrame
+    df = pd.DataFrame(np.hstack([inputs_arr, preds_arr]))
+    df.columns = ["x1", "x2", ..., "y_predicted1", "y_predicted2", ...] # 请替换 "x1", "x2"... 为实际的列名
+
+    # 保存为 csv 文件
+    df.to_csv("result.csv", index=False)
 def main():
     parser = argparse.ArgumentParser(description='Train the model')
     parser.add_argument('--epochs', required=True, type=int, help='Number of epochs')
